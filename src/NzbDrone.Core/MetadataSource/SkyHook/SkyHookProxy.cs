@@ -508,11 +508,11 @@ namespace NzbDrone.Core.MetadataSource.SkyHook
             {
                 album.AlbumReleases = resource.Releases.Select(x => MapRelease(x, artistDict)).Where(x => x.TrackCount > 0).ToList();
 
-                // Monitor the release with most tracks
-                var mostTracks = album.AlbumReleases.Value.MaxBy(x => x.TrackCount);
-                if (mostTracks != null)
+                // Monitor the most preferred release
+                var preferredRelease = album.AlbumReleases.Value.OrderByPreference().FirstOrDefault();
+                if (preferredRelease != null)
                 {
-                    mostTracks.Monitored = true;
+                    preferredRelease.Monitored = true;
                 }
             }
             else

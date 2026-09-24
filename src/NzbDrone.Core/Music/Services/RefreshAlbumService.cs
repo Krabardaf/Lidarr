@@ -309,7 +309,7 @@ namespace NzbDrone.Core.Music
             }
 
             var toMonitor = monitored.OrderByDescending(x => _mediaFileService.GetFilesByRelease(x.Id).Count)
-                .ThenByDescending(x => x.TrackCount)
+                .ThenBy(x => x, AlbumReleasePreferenceComparer.Instance)
                 .First();
 
             releases.ForEach(x => x.Monitored = false);
