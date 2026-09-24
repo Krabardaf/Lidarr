@@ -289,21 +289,19 @@ namespace NzbDrone.Core.Music
             _eventAggregator.PublishEvent(new AlbumInfoRefreshedEvent(entity, newChildren, updateChildren, removedChildren));
         }
 
-        private void RescanArtists(List<Artist> artists, bool isNew, CommandTrigger trigger, bool infoUpdated)
+        private void RescanArtists(List<Artist> artists, bool isNew, CommandTrigger trigger, bool infoUpdated, bool specificArtistsOnly = false)
         {
             var rescanAfterRefresh = _configService.RescanAfterRefresh;
             var shouldRescan = true;
             var filter = FilterFilesType.Matched;
-            var folders = _rootFolderService.All().Select(x => x.Path).ToList();
+            var folders = (isNew || specificArtistsOnly)
+                ? artists.Select(x => x.Path).Where(p => p.IsNotNullOrWhiteSpace()).ToList()
+                : _rootFolderService.All().Select(x => x.Path).ToList();
 
             if (isNew)
             {
                 _logger.Trace("Forcing rescan. Reason: New artist added");
                 shouldRescan = true;
-
-                // only rescan artist folders - otherwise it can be super slow for
-                // badly organized / partly matched libraries
-                folders = artists.Select(x => x.Path).ToList();
             }
             else if (rescanAfterRefresh == RescanAfterRefreshType.Never)
             {
@@ -357,7 +355,7 @@ namespace NzbDrone.Core.Music
                 }
             }
 
-            RescanArtists(artists, isNew, trigger, updated);
+            RescanArtists(artists, isNew, trigger, updated, specificArtistsOnly: true);
         }
 
         private void UpdateTags(Artist artist)

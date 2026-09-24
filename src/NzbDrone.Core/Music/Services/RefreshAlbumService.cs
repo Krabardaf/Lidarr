@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using NLog;
 using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Core.Exceptions;
@@ -346,25 +347,60 @@ namespace NzbDrone.Core.Music
                 updatedMusicbrainzAlbums = _albumInfo.GetChangedAlbums(lastUpdate.Value);
             }
 
+            var albumsToRefresh = new List<Album>();
+
             foreach (var album in albums)
             {
                 if (forceAlbumRefresh ||
                     (updatedMusicbrainzAlbums is not { Count: not 0 } && _checkIfAlbumShouldBeRefreshed.ShouldRefresh(album)) ||
                     (updatedMusicbrainzAlbums is { Count: > 0 } && updatedMusicbrainzAlbums.Contains(album.ForeignAlbumId)))
                 {
-                    try
-                    {
-                        updated |= RefreshAlbumInfo(album, remoteAlbums, forceUpdateFileTags);
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.Error(e, "Couldn't refresh info for Album '{0}' [{1}]", album.Title, album.ForeignAlbumId);
-                    }
+                    albumsToRefresh.Add(album);
                 }
                 else
                 {
                     _logger.Debug("Skipping refresh of Album '{0}' [{1}]", album.Title, album.ForeignAlbumId);
                 }
+            }
+
+            if (albumsToRefresh.Count == 1)
+            {
+                try
+                {
+                    updated |= RefreshAlbumInfo(albumsToRefresh[0], remoteAlbums, forceUpdateFileTags);
+                }
+                catch (Exception e)
+                {
+                    _logger.Error(e, "Couldn't refresh info for Album '{0}' [{1}]", albumsToRefresh[0].Title, albumsToRefresh[0].ForeignAlbumId);
+                }
+            }
+            else if (albumsToRefresh.Count > 1)
+            {
+                var parallelOptions = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 2, 6)
+                };
+
+                var syncLock = new object();
+
+                Parallel.ForEach(albumsToRefresh, parallelOptions, album =>
+                {
+                    try
+                    {
+                        var albumUpdated = RefreshAlbumInfo(album, remoteAlbums, forceUpdateFileTags);
+                        if (albumUpdated)
+                        {
+                            lock (syncLock)
+                            {
+                                updated = true;
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.Error(e, "Couldn't refresh info for Album '{0}' [{1}]", album.Title, album.ForeignAlbumId);
+                    }
+                });
             }
 
             return updated;
