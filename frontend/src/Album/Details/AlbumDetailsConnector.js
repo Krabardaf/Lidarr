@@ -10,6 +10,7 @@ import { executeCommand } from 'Store/Actions/commandActions';
 import { clearTracks, fetchTracks } from 'Store/Actions/trackActions';
 import { clearTrackFiles, fetchTrackFiles } from 'Store/Actions/trackFileActions';
 import createAllArtistSelector from 'Store/Selectors/createAllArtistSelector';
+import createClientSideCollectionSelector from 'Store/Selectors/createClientSideCollectionSelector';
 import createCommandsSelector from 'Store/Selectors/createCommandsSelector';
 import createUISettingsSelector from 'Store/Selectors/createUISettingsSelector';
 import { findCommand, isCommandExecuting } from 'Utilities/Command';
@@ -42,19 +43,25 @@ function createMapStateToProps() {
     (state, { foreignAlbumId }) => foreignAlbumId,
     (state) => state.tracks,
     selectTrackFiles,
-    (state) => state.albums,
+    createClientSideCollectionSelector('albums'),
     createAllArtistSelector(),
     createCommandsSelector(),
     createUISettingsSelector(),
-    (foreignAlbumId, tracks, trackFiles, albums, artists, commands, uiSettings) => {
-      const sortedAlbums = _.orderBy(albums.items, 'releaseDate');
-      const albumIndex = _.findIndex(sortedAlbums, { foreignAlbumId });
-      const album = sortedAlbums[albumIndex];
-      const artist = _.find(artists, { id: album.artistId });
+    (foreignAlbumId, tracks, trackFiles, albumsCollection, artists, commands, uiSettings) => {
+      const album = _.find(albumsCollection.items, { foreignAlbumId });
 
       if (!album) {
         return {};
       }
+
+      const artist = _.find(artists, { id: album.artistId });
+      const artistAlbums = albumsCollection.items.filter((item) => item.artistId === album.artistId);
+      const albumTypes = _.orderBy(_.uniq(_.map(artistAlbums, 'albumType')));
+      const sortedAlbums = _.flatMap(albumTypes, (type) =>
+        artistAlbums.filter((item) => item.albumType === type)
+      );
+
+      const albumIndex = _.findIndex(sortedAlbums, { foreignAlbumId });
 
       const {
         isTrackFilesFetching,
@@ -70,11 +77,11 @@ function createMapStateToProps() {
         isCommandExecuting(isSearchingCommand) &&
         isSearchingCommand.body.albumIds.indexOf(album.id) > -1
       );
-      const isRenamingFiles = isCommandExecuting(findCommand(commands, { name: commandNames.RENAME_FILES, artistId: artist.id }));
+      const isRenamingFiles = isCommandExecuting(findCommand(commands, { name: commandNames.RENAME_FILES, artistId: artist?.id }));
       const isRenamingArtistCommand = findCommand(commands, { name: commandNames.RENAME_ARTIST });
       const isRenamingArtist = (
         isCommandExecuting(isRenamingArtistCommand) &&
-        isRenamingArtistCommand.body.artistIds.indexOf(artist.id) > -1
+        isRenamingArtistCommand.body.artistIds.indexOf(artist?.id) > -1
       );
 
       const isFetching = tracks.isFetching || isTrackFilesFetching;
